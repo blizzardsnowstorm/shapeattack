@@ -66,25 +66,68 @@ function love.update(dt)
         b.x = b.x + math.cos(b.angle) * bulletSpeed * dt
         b.y = b.y + math.sin(b.angle) * bulletSpeed * dt
 
-        for j = #enemies, 1, -1 do
-            local e = enemies[j]
-            if distance(b.x, b.y, e.x, e.y) < 30 then
-                table.remove(enemies, j)
+        local removed = false
+        for j = #enemyBullets, 1, -1 do
+            local eb = enemyBullets[j]
+            if distance(b.x, b.y, eb.x, eb.y) < 10 then
                 table.remove(bullets, i)
-                score = score + 1
-                break 
+                table.remove(enemyBullets, j)
+                removed = true
+                break
+            end
+        end
+
+        if not removed then
+            for j = #enemies, 1, -1 do
+                local e = enemies[j]
+                if distance(b.x, b.y, e.x, e.y) < 30 then
+                    table.remove(enemies, j)
+                    table.remove(bullets, i)
+                    score = score + 1
+                    break 
+                end
             end
         end
     end
 
     for i = #enemyBullets, 1, -1 do
-        local eb = enemyBullets[i]
-        eb.x = eb.x + math.cos(eb.angle) * (bulletSpeed * 0.6) * dt
-        eb.y = eb.y + math.sin(eb.angle) * (bulletSpeed * 0.6) * dt
+        local eb1 = enemyBullets[i]
+        if eb1 then
+            eb1.x = eb1.x + math.cos(eb1.angle) * (bulletSpeed * 0.6) * dt
+            eb1.y = eb1.y + math.sin(eb1.angle) * (bulletSpeed * 0.6) * dt
 
-        if distance(eb.x, eb.y, player.x, player.y) < 25 then
-            player.health = player.health - 1
-            table.remove(enemyBullets, i)
+            local ebRemoved = false
+            
+            for j = #enemyBullets, 1, -1 do
+                if i ~= j then
+                    local eb2 = enemyBullets[j]
+                    if eb2 and distance(eb1.x, eb1.y, eb2.x, eb2.y) < 10 then
+                        table.remove(enemyBullets, math.max(i, j))
+                        table.remove(enemyBullets, math.min(i, j))
+                        ebRemoved = true
+                        break
+                    end
+                end
+            end
+
+            if not ebRemoved then
+                for j = #enemies, 1, -1 do
+                    local e = enemies[j]
+                    if distance(eb1.x, eb1.y, e.x, e.y) < 30 then
+                        table.remove(enemies, j)
+                        table.remove(enemyBullets, i)
+                        ebRemoved = true
+                        break
+                    end
+                end
+            end
+
+            if not ebRemoved then
+                if distance(eb1.x, eb1.y, player.x, player.y) < 25 then
+                    player.health = player.health - 1
+                    table.remove(enemyBullets, i)
+                end
+            end
         end
     end
 
@@ -96,7 +139,6 @@ function love.update(dt)
         elseif side == 2 then ex, ey = 850, love.math.random(0, 600)
         elseif side == 3 then ex, ey = love.math.random(0, 800), -50
         else ex, ey = love.math.random(0, 800), 650 end
-
         table.insert(enemies, {x = ex, y = ey, speed = player.speed * 0.5, shootTimer = 0})
         enemySpawnTimer = 0
     end
@@ -105,15 +147,16 @@ function love.update(dt)
         local e = enemies[i]
         local distToPlayer = distance(e.x, e.y, player.x, player.y)
         local angleToPlayer = math.atan2(player.y - e.y, player.x - e.x)
-
         if distToPlayer > 250 then
             e.x = e.x + math.cos(angleToPlayer) * e.speed * dt
             e.y = e.y + math.sin(angleToPlayer) * e.speed * dt
         end
-
         e.shootTimer = e.shootTimer + dt
         if e.shootTimer > 2 then
-            table.insert(enemyBullets, {x = e.x, y = e.y, angle = angleToPlayer})
+            -- SPAWN BULLET OUTSIDE THE TANK RADIUS (40 pixels out)
+            local spawnX = e.x + math.cos(angleToPlayer) * 40
+            local spawnY = e.y + math.sin(angleToPlayer) * 40
+            table.insert(enemyBullets, {x = spawnX, y = spawnY, angle = angleToPlayer})
             e.shootTimer = 0
         end
     end
@@ -132,7 +175,6 @@ end
 
 function love.draw()
     love.graphics.clear(0.1, 0.3, 0.1) 
-    
     love.graphics.setColor(0.12, 0.35, 0.12)
     local size = 50
     for x = 0, love.graphics.getWidth(), size do
