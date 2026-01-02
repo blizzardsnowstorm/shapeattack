@@ -5,6 +5,12 @@ local enemies = {}
 local enemySpawnTimer = 0
 local bulletSpeed = 500
 local score = 0
+local playerImage 
+local enemyImage
+
+local function clamp(val, min, max)
+    return math.max(min, math.min(val, max))
+end
 
 function resetGame()
     player.x = love.graphics.getWidth() / 2
@@ -13,8 +19,8 @@ function resetGame()
     player.speed = 200
     player.rotSpeed = 5
     player.health = 2
-    player.shootTimer = 0      -- Current timer state
-    player.shootCooldown = 1.5 -- 1.5 seconds between shots
+    player.shootTimer = 0      
+    player.shootCooldown = 1.5 
     score = 0
     
     bullets = {}
@@ -24,6 +30,8 @@ function resetGame()
 end
 
 function love.load()
+    playerImage = love.graphics.newImage("player.png")
+    enemyImage = love.graphics.newImage("enemy.png")
     resetGame()
 end
 
@@ -34,12 +42,10 @@ end
 function love.update(dt)
     if player.health <= 0 then return end
 
-    -- Handle Player Shoot Cooldown
     if player.shootTimer > 0 then
         player.shootTimer = player.shootTimer - dt
     end
 
-    -- 1. Player Movement & Rotation
     if love.keyboard.isDown("a") then player.angle = player.angle - player.rotSpeed * dt end
     if love.keyboard.isDown("d") then player.angle = player.angle + player.rotSpeed * dt end
 
@@ -52,7 +58,9 @@ function love.update(dt)
         player.y = player.y - math.sin(player.angle) * player.speed * dt
     end
 
-    -- 2. Update Player Bullets & Collision
+    player.x = clamp(player.x, 25, love.graphics.getWidth() - 25)
+    player.y = clamp(player.y, 25, love.graphics.getHeight() - 25)
+
     for i = #bullets, 1, -1 do
         local b = bullets[i]
         b.x = b.x + math.cos(b.angle) * bulletSpeed * dt
@@ -69,7 +77,6 @@ function love.update(dt)
         end
     end
 
-    -- 3. Update Enemy Bullets
     for i = #enemyBullets, 1, -1 do
         local eb = enemyBullets[i]
         eb.x = eb.x + math.cos(eb.angle) * (bulletSpeed * 0.6) * dt
@@ -81,7 +88,6 @@ function love.update(dt)
         end
     end
 
-    -- 4. Enemy Spawning
     enemySpawnTimer = enemySpawnTimer + dt
     if enemySpawnTimer > 3 then
         local side = love.math.random(1, 4)
@@ -95,7 +101,6 @@ function love.update(dt)
         enemySpawnTimer = 0
     end
 
-    -- 5. Enemy Behavior
     for i = #enemies, 1, -1 do
         local e = enemies[i]
         local distToPlayer = distance(e.x, e.y, player.x, player.y)
@@ -118,70 +123,75 @@ function love.keypressed(key)
     if key == "space" then
         if player.health <= 0 then
             resetGame()
-        elseif player.shootTimer <= 0 then -- Only shoot if cooldown is over
+        elseif player.shootTimer <= 0 then 
             table.insert(bullets, {x = player.x, y = player.y, angle = player.angle})
-            player.shootTimer = player.shootCooldown -- Reset the timer
+            player.shootTimer = player.shootCooldown 
         end
     end
 end
 
 function love.draw()
-    -- Draw UI
+    love.graphics.clear(0.1, 0.3, 0.1) 
+    
+    love.graphics.setColor(0.12, 0.35, 0.12)
+    local size = 50
+    for x = 0, love.graphics.getWidth(), size do
+        for y = 0, love.graphics.getHeight(), size do
+            if (x + y) % (size * 2) == 0 then
+                love.graphics.rectangle("fill", x, y, size, size)
+            end
+        end
+    end
+
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("HP: " .. player.health, 10, 10)
     love.graphics.printf("Score: " .. score, 0, 10, love.graphics.getWidth() - 10, "right")
     
-    -- Visual cooldown bar (Optional but helpful)
     if player.health > 0 then
         love.graphics.setColor(0.3, 0.3, 0.3)
         love.graphics.rectangle("line", 10, 30, 100, 10)
         if player.shootTimer <= 0 then
-            love.graphics.setColor(0, 1, 0) -- Green when ready
+            love.graphics.setColor(0, 1, 0) 
         else
-            love.graphics.setColor(1, 1, 0) -- Yellow when recharging
+            love.graphics.setColor(1, 1, 0) 
         end
         local barWidth = math.max(0, (1 - (player.shootTimer / player.shootCooldown)) * 100)
         love.graphics.rectangle("fill", 10, 30, barWidth, 10)
     end
 
     if player.health <= 0 then
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+        love.graphics.setColor(1, 1, 1)
         love.graphics.printf("GAME OVER", 0, love.graphics.getHeight()/2 - 20, love.graphics.getWidth(), "center")
         love.graphics.printf("Final Score: " .. score, 0, love.graphics.getHeight()/2 + 10, love.graphics.getWidth(), "center")
         love.graphics.printf("Press SPACE to Restart", 0, love.graphics.getHeight()/2 + 40, love.graphics.getWidth(), "center")
         return
     end
 
-    -- Draw Player Bullets
     love.graphics.setColor(1, 1, 0)
     for _, b in ipairs(bullets) do
         love.graphics.circle("fill", b.x, b.y, 5)
     end
 
-    -- Draw Enemy Bullets
     love.graphics.setColor(1, 0, 0)
     for _, eb in ipairs(enemyBullets) do
         love.graphics.circle("fill", eb.x, eb.y, 5)
     end
 
-    -- Draw Enemies
     for _, e in ipairs(enemies) do
         love.graphics.push()
         love.graphics.translate(e.x, e.y)
-        love.graphics.rotate(math.atan2(player.y - e.y, player.x - e.x))
-        love.graphics.setColor(1, 0, 0)
-        love.graphics.rectangle("fill", -25, -25, 50, 50)
-        love.graphics.setColor(0.5, 0, 0)
-        love.graphics.rectangle("fill", 25, -5, 30, 10)
+        love.graphics.rotate(math.atan2(player.y - e.y, player.x - e.x) + math.pi / 2)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.draw(enemyImage, 0, 0, 0, 1, 1, enemyImage:getWidth()/2, enemyImage:getHeight()/2)
         love.graphics.pop()
     end
 
-    -- Draw Player
     love.graphics.push()
     love.graphics.translate(player.x, player.y)
-    love.graphics.rotate(player.angle)
-    love.graphics.setColor(1, 0, 1)
-    love.graphics.rectangle("fill", -25, -25, 50, 50)
-    love.graphics.setColor(0.8, 0.8, 0.8)
-    love.graphics.rectangle("fill", 25, -5, 30, 10)
+    love.graphics.rotate(player.angle + math.pi / 2) 
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.draw(playerImage, 0, 0, 0, 1, 1, playerImage:getWidth()/2, playerImage:getHeight()/2)
     love.graphics.pop()
 end
