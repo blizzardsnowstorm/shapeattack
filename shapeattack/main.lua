@@ -3,10 +3,16 @@ local bullets = {}
 local enemyBullets = {}
 local enemies = {}
 local enemySpawnTimer = 0
+local scoreTimer = 0 
 local bulletSpeed = 500
 local score = 0
 local playerImage 
 local enemyImage
+
+-- Audio handles
+local hitSound
+local struckSound
+local bgMusic 
 
 local function clamp(val, min, max)
     return math.max(min, math.min(val, max))
@@ -19,19 +25,34 @@ function resetGame()
     player.speed = 200
     player.rotSpeed = 5
     player.health = 2
+    player.maxHealth = 2 -- Added to calculate percentage
     player.shootTimer = 0      
     player.shootCooldown = 1.5 
     score = 0
+    scoreTimer = 0 
     
     bullets = {}
     enemyBullets = {}
     enemies = {}
     enemySpawnTimer = 0
+
+    if bgMusic then
+        bgMusic:stop()
+        bgMusic:play()
+    end
 end
 
 function love.load()
     playerImage = love.graphics.newImage("player.png")
     enemyImage = love.graphics.newImage("enemy.png")
+    
+    hitSound = love.audio.newSource("Hit.wav", "static")
+    struckSound = love.audio.newSource("Struck.wav", "static")
+    
+    bgMusic = love.audio.newSource("voltost.mp3", "stream")
+    bgMusic:setLooping(true)
+    bgMusic:setVolume(0.6)
+    
     resetGame()
 end
 
@@ -41,6 +62,12 @@ end
 
 function love.update(dt)
     if player.health <= 0 then return end
+
+    scoreTimer = scoreTimer + dt
+    if scoreTimer >= 1 then
+        score = score + 1
+        scoreTimer = scoreTimer - 1 
+    end
 
     if player.shootTimer > 0 then
         player.shootTimer = player.shootTimer - dt
@@ -61,6 +88,7 @@ function love.update(dt)
     player.x = clamp(player.x, 25, love.graphics.getWidth() - 25)
     player.y = clamp(player.y, 25, love.graphics.getHeight() - 25)
 
+    -- Update Player Bullets
     for i = #bullets, 1, -1 do
         local b = bullets[i]
         b.x = b.x + math.cos(b.angle) * bulletSpeed * dt
@@ -83,13 +111,15 @@ function love.update(dt)
                 if distance(b.x, b.y, e.x, e.y) < 30 then
                     table.remove(enemies, j)
                     table.remove(bullets, i)
-                    score = score + 1
+                    score = score + 1 
+                    struckSound:clone():play()
                     break 
                 end
             end
         end
     end
 
+    -- Update Enemy Bullets
     for i = #enemyBullets, 1, -1 do
         local eb1 = enemyBullets[i]
         if eb1 then
@@ -97,7 +127,6 @@ function love.update(dt)
             eb1.y = eb1.y + math.sin(eb1.angle) * (bulletSpeed * 0.6) * dt
 
             local ebRemoved = false
-            
             for j = #enemyBullets, 1, -1 do
                 if i ~= j then
                     local eb2 = enemyBullets[j]
@@ -116,6 +145,7 @@ function love.update(dt)
                     if distance(eb1.x, eb1.y, e.x, e.y) < 30 then
                         table.remove(enemies, j)
                         table.remove(enemyBullets, i)
+                        struckSound:clone():play()
                         ebRemoved = true
                         break
                     end
@@ -126,11 +156,13 @@ function love.update(dt)
                 if distance(eb1.x, eb1.y, player.x, player.y) < 25 then
                     player.health = player.health - 1
                     table.remove(enemyBullets, i)
+                    struckSound:clone():play()
                 end
             end
         end
     end
 
+    -- Enemy Spawning
     enemySpawnTimer = enemySpawnTimer + dt
     if enemySpawnTimer > 3 then
         local side = love.math.random(1, 4)
@@ -143,6 +175,7 @@ function love.update(dt)
         enemySpawnTimer = 0
     end
 
+    -- Enemy AI and Shooting
     for i = #enemies, 1, -1 do
         local e = enemies[i]
         local distToPlayer = distance(e.x, e.y, player.x, player.y)
@@ -153,11 +186,11 @@ function love.update(dt)
         end
         e.shootTimer = e.shootTimer + dt
         if e.shootTimer > 2 then
-            -- SPAWN BULLET OUTSIDE THE TANK RADIUS (40 pixels out)
             local spawnX = e.x + math.cos(angleToPlayer) * 40
             local spawnY = e.y + math.sin(angleToPlayer) * 40
             table.insert(enemyBullets, {x = spawnX, y = spawnY, angle = angleToPlayer})
             e.shootTimer = 0
+            hitSound:clone():play()
         end
     end
 end
@@ -169,6 +202,7 @@ function love.keypressed(key)
         elseif player.shootTimer <= 0 then 
             table.insert(bullets, {x = player.x, y = player.y, angle = player.angle})
             player.shootTimer = player.shootCooldown 
+            hitSound:clone():play()
         end
     end
 end
@@ -185,20 +219,39 @@ function love.draw()
         end
     end
 
+    -- DRAW UI
     love.graphics.setColor(1, 1, 1)
-    love.graphics.print("HP: " .. player.health, 10, 10)
+    
+    -- Calculate HP percentage
+    local hpPercent = math.max(0, (player.health / player.maxHealth) * 100)
+    love.graphics.print("HP: " .. hpPercent .. "%", 10, 10)
+    
     love.graphics.printf("Score: " .. score, 0, 10, love.graphics.getWidth() - 10, "right")
     
     if player.health > 0 then
+        -- CENTER TOP COOLDOWN BAR
+        local fullBarWidth = 200
+        local barHeight = 15
+        local barX = (love.graphics.getWidth() / 2) - (fullBarWidth / 2)
+        local barY = 20
+
+        -- Background of bar
         love.graphics.setColor(0.3, 0.3, 0.3)
-        love.graphics.rectangle("line", 10, 30, 100, 10)
+        love.graphics.rectangle("line", barX, barY, fullBarWidth, barHeight)
+        
+        -- Fill of bar
         if player.shootTimer <= 0 then
-            love.graphics.setColor(0, 1, 0) 
+            love.graphics.setColor(0, 1, 0) -- Green when ready
         else
-            love.graphics.setColor(1, 1, 0) 
+            love.graphics.setColor(1, 1, 0) -- Yellow when charging
         end
-        local barWidth = math.max(0, (1 - (player.shootTimer / player.shootCooldown)) * 100)
-        love.graphics.rectangle("fill", 10, 30, barWidth, 10)
+        
+        local currentFillWidth = math.max(0, (1 - (player.shootTimer / player.shootCooldown)) * fullBarWidth)
+        love.graphics.rectangle("fill", barX, barY, currentFillWidth, barHeight)
+        
+        -- Label for the bar
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.printf("COOLDOWN", 0, barY + 18, love.graphics.getWidth(), "center")
     end
 
     if player.health <= 0 then
@@ -211,6 +264,7 @@ function love.draw()
         return
     end
 
+    -- Draw Bullets
     love.graphics.setColor(1, 1, 0)
     for _, b in ipairs(bullets) do
         love.graphics.circle("fill", b.x, b.y, 5)
@@ -221,6 +275,7 @@ function love.draw()
         love.graphics.circle("fill", eb.x, eb.y, 5)
     end
 
+    -- Draw Enemies
     for _, e in ipairs(enemies) do
         love.graphics.push()
         love.graphics.translate(e.x, e.y)
@@ -230,6 +285,7 @@ function love.draw()
         love.graphics.pop()
     end
 
+    -- Draw Player
     love.graphics.push()
     love.graphics.translate(player.x, player.y)
     love.graphics.rotate(player.angle + math.pi / 2) 
